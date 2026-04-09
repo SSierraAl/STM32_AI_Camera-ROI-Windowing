@@ -1,0 +1,9 @@
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:238:9:BSP_I2C2_DeInit	8	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:266:26:MX_I2C2_Init	8	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:187:9:BSP_I2C2_Init	120	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:312:9:BSP_I2C2_WriteReg	24	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:349:9:BSP_I2C2_ReadReg	24	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:386:9:BSP_I2C2_WriteReg16	24	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:423:9:BSP_I2C2_ReadReg16	24	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:459:9:BSP_I2C2_IsReady	8	static
+C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Drivers/BSP/STM32N6xx_Nucleo/stm32n6xx_nucleo_bus.c:481:9:BSP_GetTick	0	static
