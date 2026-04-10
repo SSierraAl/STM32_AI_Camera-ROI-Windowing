@@ -82,7 +82,7 @@ main-build: x-cube-n6-camera-capture-nucleo.elf secondary-outputs
 
 # Tool invocations
 x-cube-n6-camera-capture-nucleo.elf x-cube-n6-camera-capture-nucleo.map: $(OBJS) $(USER_OBJS) ../../../Gcc/STM32N657xx_nucleo.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "x-cube-n6-camera-capture-nucleo.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m55 -T"../../../Gcc/STM32N657xx_nucleo.ld" --specs=nosys.specs -Wl,-Map="x-cube-n6-camera-capture-nucleo.map" -Wl,--gc-sections -static -Wl,--cmse-implib -Wl,--out-implib=./secure_nsclib.o -u _printf_float -Wl,--no-warn-rwx-segments --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "x-cube-n6-camera-capture-nucleo.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m55 -T"../../../Gcc/STM32N657xx_nucleo.ld" --specs=nosys.specs -Wl,-Map="x-cube-n6-camera-capture-nucleo.map" -Wl,--gc-sections -static -Wl,--cmse-implib -Wl,--out-implib=./secure_nsclib.o -u _printf_float -Wl,--no-warn-rwx-segments --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -u _printf_float -u _scanf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

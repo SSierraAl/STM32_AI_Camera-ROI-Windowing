@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "app_cam.h"
 #include "app_config.h"
@@ -40,6 +41,11 @@
 #include "uvcl.h"
 #include "app_cam.h"
 /* ROI test support */
+
+/* Serial command support - using USART1 (same as console) */
+extern UART_HandleTypeDef huart1;  /* Defined in main.c */
+static char rx_buffer[64];
+static int rx_index = 0;
 
 /* Disable jpeg support for nucleo due to lack of memory */
 #ifdef STM32N6570_NUCLEO_REV
@@ -1541,6 +1547,20 @@ void app_run()
   /* Enable DWT so DWT_CYCCNT works when debugger not attached */
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 
+  /* Enable USART1 receive interrupt for serial commands */
+  HAL_NVIC_SetPriority(USART1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
+  
+  /* CRITICAL: Enable the UART RXNE interrupt */
+  __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+  
+  printf("\r\n=== Serial Control Ready ===\r\n");
+  printf("Commands:\r\n");
+  printf("  ROI:X  - Switch to ROI #X (0-7)\r\n");
+  printf("  LIST   - List all ROIs\r\n");
+  printf("  HELP   - Show help\r\n");
+  printf("==============================\r\n");
+
   LIST_Init();
   sr_init(&streaming_req);
 
@@ -1581,4 +1601,76 @@ int CMW_CAMERA_PIPE_VsyncEventCallback(uint32_t pipe)
     app_main_pipe_vsync_event();
 
   return HAL_OK;
+}
+
+/* ==================== SERIAL COMMAND HANDLER (USART1) ==================== */
+
+/* Parse and execute serial commands */
+static void USART1_ProcessCommand(char *cmd)
+{
+  int roi_idx;
+  
+  /* Skip empty commands */
+  if (cmd[0] == '\0' || cmd[0] == '\n')
+    return;
+  
+  /* Remove newline/carriage return */
+  cmd[strcspn(cmd, "\r\n")] = 0;
+  
+  printf("[SERIAL] Received: %s\r\n", cmd);
+  
+  /* Check for ROI command: "ROI:X" */
+  if (strncmp(cmd, "ROI:", 4) == 0) {
+    roi_idx = atoi(cmd + 4);
+    if (roi_idx >= 0 && roi_idx < 8) {
+      printf("[SERIAL] Switching to ROI #%d\r\n", roi_idx);
+      
+      /* Update the ROI in app_cam */
+      CAM_SwitchROI(roi_idx);
+      roi_changed_flag = 1;
+      
+      printf("[SERIAL] ROI #%d activated\r\n", roi_idx);
+    } else {
+      printf("[SERIAL] Invalid ROI index: %d (must be 0-7)\r\n", roi_idx);
+    }
+  }
+  /* Check for LIST command */
+  else if (strcmp(cmd, "LIST") == 0) {
+    App_ListROIs();
+  }
+  /* Check for HELP command */
+  else if (strcmp(cmd, "HELP") == 0) {
+    printf("[SERIAL] Commands: ROI:X (0-7), LIST, HELP\r\n");
+  }
+  else {
+    printf("[SERIAL] Unknown command. Type HELP for list.\r\n");
+  }
+}
+
+/* USART1 IRQ Handler - called when data is received (same as console UART) */
+void USART1_IRQHandler(void)
+{
+  uint8_t byte;
+  
+  if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
+    /* Read received byte */
+    byte = (uint8_t)(huart1.Instance->RDR & 0xFF);
+    
+    /* Store in buffer */
+    if (rx_index < 63) {
+      rx_buffer[rx_index++] = byte;
+      
+      /* Check for newline (end of command) */
+      if (byte == '\n' || byte == '\r') {
+        rx_buffer[rx_index] = '\0';
+        rx_index = 0;  /* Reset buffer */
+        
+        /* Process command */
+        USART1_ProcessCommand((char *)rx_buffer);
+      }
+    } else {
+      /* Buffer full, reset */
+      rx_index = 0;
+    }
+  }
 }

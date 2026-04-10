@@ -2,12 +2,41 @@ import cv2
 import time
 import sys
 import numpy as np
+import serial
+import serial.tools.list_ports
 
 # ========================= CONFIGURATION =========================
 CAMERA_INDEX = 0          # Change this if your camera is not at index 0
 FRAME_WIDTH = 640         # Desired width
 FRAME_HEIGHT = 480        # Desired height
 FPS = 30                  # Desired frame rate
+
+# ========================= IMAGE ENHANCEMENT =========================
+# Enable image enhancements (set to True to enable)
+ENHANCE_SHARPEN = False       # Apply sharpening filter (OFF for speed)
+ENHANCE_CONTRAST = False      # Apply contrast enhancement (OFF for speed)
+ENHANCE_DENOISE = False       # Apply denoising (OFF - very slow)
+ENHANCE_UPSCALE = False
+       # Upscale to HD (OFF for speed)
+UPSCALE_FACTOR = 2            # Upscale factor (2 = HD, 3 = 3x larger)
+CONTRAST_FACTOR = 1.0         # Contrast multiplier (1.0 = normal)
+BRIGHTNESS_OFFSET = 0         # Brightness adjustment (-255 to +255)
+SHARPEN_KERNEL = 1.5          # Sharpening strength (0 = off, 1-2 = moderate, 2+ = strong)
+
+# ========================= COLOR CORRECTION =========================
+# Fix purple/green tint from new lens (adjust these values)
+COLOR_FIX_ENABLED = False      # Enable color correction
+BLUE_CHANNEL_MULTIPLIER = 0.7 # Reduce blue (0.5-1.0, try 0.6-0.8 for purple fix)
+RED_CHANNEL_MULTIPLIER = 1.1  # Increase red (1.0-1.3)
+GREEN_CHANNEL_MULTIPLIER = 1.0 # Green multiplier (0.9-1.1)
+SATURATION = 1.2              # Color saturation (1.0 = normal, 1.3 = vibrant)
+
+# ========================= SERIAL COMMUNICATION =========================
+# Control ROI switching via serial from Python
+SERIAL_ENABLED = True         # Enable serial communication
+SERIAL_PORT = 'COM7'          # STM32 ST-Link UART port (change if different)
+SERIAL_BAUDRATE = 115200      # Baud rate (must match STM32)
+# ====================================================================
 
 
 
@@ -58,6 +87,94 @@ def print_camera_info(cap):
         print(f"\n  FourCC Codec: {codec} (0x{fourcc:08X})")
     
     print("\n" + "=" * 60)
+
+def correct_color(frame):
+    """
+    Fast color correction to fix purple/green tint from new lens.
+    Adjusts RGB channel multipliers to correct color balance.
+    """
+    if frame is None or not COLOR_FIX_ENABLED:
+        return frame
+    
+    # OpenCV uses BGR order
+    b, g, r = cv2.split(frame)
+    
+    # Apply channel multipliers (fast operation)
+    b = cv2.multiply(b, BLUE_CHANNEL_MULTIPLIER)
+    g = cv2.multiply(g, GREEN_CHANNEL_MULTIPLIER)
+    r = cv2.multiply(r, RED_CHANNEL_MULTIPLIER)
+    
+    # Clip to valid range
+    b = np.clip(b, 0, 255).astype(np.uint8)
+    g = np.clip(g, 0, 255).astype(np.uint8)
+    r = np.clip(r, 0, 255).astype(np.uint8)
+    
+    # Apply saturation
+    if SATURATION != 1.0:
+        # Convert to HSV for saturation adjustment
+        bgr = cv2.merge([b, g, r])
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        s = cv2.multiply(s, SATURATION)
+        s = np.clip(s, 0, 255).astype(np.uint8)
+        hsv = cv2.merge([h, s, v])
+        bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        b, g, r = cv2.split(bgr)
+    
+    # Merge channels back
+    return cv2.merge([b, g, r])
+
+def enhance_image(frame):
+    """
+    Apply all enabled image enhancements to the frame.
+    Returns enhanced frame.
+    """
+    if frame is None:
+        return None
+    
+    enhanced = frame.copy()
+    
+    # 1. Denoising (applied first to reduce noise before other enhancements)
+    if ENHANCE_DENOISE:
+        # Fast NLM denoising - good balance of speed and quality
+        enhanced = cv2.fastNlMeansDenoisingColored(enhanced, None, 10, 10, 7, 21)
+    
+    # 2. Contrast and Brightness adjustment
+    if ENHANCE_CONTRAST:
+        # Apply contrast and brightness
+        # enhanced = alpha * enhanced + beta
+        alpha = CONTRAST_FACTOR
+        beta = BRIGHTNESS_OFFSET
+        enhanced = cv2.convertScaleAbs(enhanced, alpha=alpha, beta=beta)
+    
+    # 3. Sharpening
+    if ENHANCE_SHARPEN:
+        # Create sharpening kernel
+        kernel_strength = SHARPEN_KERNEL
+        kernel = np.array([
+            [-kernel_strength/4, -kernel_strength/4, -kernel_strength/4],
+            [-kernel_strength/4, 1 + kernel_strength*2, -kernel_strength/4],
+            [-kernel_strength/4, -kernel_strength/4, -kernel_strength/4]
+        ])
+        enhanced = cv2.filter2D(enhanced, -1, kernel)
+    
+    return enhanced
+
+def upscale_frame(frame, factor):
+    """
+    Upscale frame using high-quality interpolation.
+    factor: upscale factor (2 = 2x larger, 3 = 3x larger, etc.)
+    """
+    if frame is None:
+        return None
+    
+    h, w = frame.shape[:2]
+    new_w = w * factor
+    new_h = h * factor
+    
+    # Use Lanczos4 for best quality (slower but higher quality)
+    # Alternatives: INTER_LINEAR (faster), INTER_CUBIC (good balance)
+    return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 
 def yuy2_to_rgb(frame):
     """
@@ -174,6 +291,40 @@ def list_available_cameras():
     
     print("=" * 60)
     return available
+
+def init_serial_connection(port, baudrate):
+    """Initialize serial connection to STM32"""
+    try:
+        ser = serial.Serial(port, baudrate, timeout=1)
+        print(f"\n*** Serial connected to {port} at {baudrate} baud ***")
+        return ser
+    except serial.SerialException as e:
+        print(f"\n*** WARNING: Could not open serial port {port}: {e} ***")
+        print("*** ROI switching via spacebar will not work ***")
+        return None
+
+def send_roi_command(ser, roi_index):
+    """Send ROI switch command to STM32"""
+    if ser is None:
+        print("[SERIAL] ERROR: Serial connection is None")
+        return False
+    if not ser.is_open:
+        print("[SERIAL] ERROR: Serial port is not open")
+        return False
+    try:
+        # Flush any pending data
+        ser.flushInput()
+        ser.flushOutput()
+        
+        # Send command format: "ROI:X\r\n" where X is the ROI index
+        command = f"ROI:{roi_index}\r\n"
+        ser.write(command.encode())
+        ser.flush()  # Ensure data is sent
+        print(f"[SERIAL] Sent: {command.strip()}")
+        return True
+    except Exception as e:
+        print(f"[SERIAL] Error sending command: {e}")
+        return False
 
 def open_camera_with_retry(camera_index, width, height, fps, backend, max_retries=5):
     """
@@ -296,7 +447,16 @@ def main():
             print("\n*** Enabling YUY2 to RGB conversion ***")
     
     print("\n" + "=" * 60)
-    print("Camera is ready! Press 'q' to quit, 'd' for debug info")
+    
+    # Initialize serial connection for ROI control
+    serial_conn = None
+    current_roi = 0
+    if SERIAL_ENABLED:
+        serial_conn = init_serial_connection(SERIAL_PORT, SERIAL_BAUDRATE)
+        if serial_conn:
+            print("Press SPACE to switch to next ROI")
+    
+    print("Camera is ready! Press 'q' to quit, 'd' for debug, 'SPACE' for next ROI")
     print("=" * 60)
     
     frame_count = 0
@@ -374,22 +534,32 @@ def main():
                 else:
                     consecutive_same_frame = 0
                 
-                if consecutive_same_frame >= 3:
-                    print(f"\n*** WARNING: Frame appears frozen! ***")
+                #if consecutive_same_frame >= 3:
+                #    print(f"\n*** WARNING: Frame appears frozen! ***")
                 
                 last_analysis = analysis
                 
-                print(f"\n--- Frame {frame_count} Analysis ---")
-                print(f"Shape: {analysis.get('shape', 'N/A')}")
-                print(f"Dtype: {analysis.get('dtype', 'N/A')}")
-                print(f"Pixel range: {analysis.get('min', 'N/A')} - {analysis.get('max', 'N/A')}")
-                print(f"Mean: {analysis.get('mean', 'N/A'):.2f}, Std: {analysis.get('std', 'N/A'):.2f}")
-                if "warning" in analysis:
-                    print(f"*** {analysis['warning']} ***")
+                #
+                #print(f"\n--- Frame {frame_count} Analysis ---")
+                #print(f"Shape: {analysis.get('shape', 'N/A')}")
+                #print(f"Dtype: {analysis.get('dtype', 'N/A')}")
+                #print(f"Pixel range: {analysis.get('min', 'N/A')} - {analysis.get('max', 'N/A')}")
+                #print(f"Mean: {analysis.get('mean', 'N/A'):.2f}, Std: {analysis.get('std', 'N/A'):.2f}")
+                #if "warning" in analysis:
+                #    print(f"*** {analysis['warning']} ***")
                 
-                elapsed = time.time() - start_time
-                fps = frame_count / elapsed
-                print(f"Current FPS: {fps:.1f} | Errors: {error_count}")
+                #elapsed = time.time() - start_time
+                #fps = frame_count / elapsed
+                #print(f"Current FPS: {fps:.1f} | Errors: {error_count}")
+            
+            # Apply color correction (fixes purple/green tint) - FAST operation
+            corrected_frame = correct_color(frame)
+            
+            # Apply image enhancements (optional, can be slow)
+            if ENHANCE_UPSCALE:
+                corrected_frame = upscale_frame(corrected_frame, UPSCALE_FACTOR)
+            
+            enhanced_frame = enhance_image(corrected_frame)
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
@@ -399,10 +569,26 @@ def main():
                 print("\n--- Manual Debug Dump ---")
                 print(f"Frame shape: {frame.shape}")
                 print(f"Frame dtype: {frame.dtype}")
-                print(f"First 3x3 pixels:")
-                print(frame[:3, :3])
+                print(f"Enhanced frame shape: {enhanced_frame.shape}")
+                print(f"First 3x3 pixels (enhanced):")
+                print(enhanced_frame[:3, :3])
+            elif key == ord(' '):  # Spacebar - switch to next ROI
+                current_roi = (current_roi + 1) % 8  # Cycle through ROIs 0-7
+                if serial_conn and serial_conn.is_open:
+                    if send_roi_command(serial_conn, current_roi):
+                        print(f"[ROI] Switched to ROI #{current_roi}")
+                    else:
+                        print(f"[ROI] Failed to send command")
+                else:
+                    print(f"[ROI] Serial not connected - ROI #{current_roi} (no STM32 response)")
+                # Small delay to prevent rapid commands
+                time.sleep(0.1)
             
-            cv2.imshow('UVC Camera - Press Q to quit, D for debug', frame)
+            # Use FIXED window name to prevent multiple windows
+            window_name = 'UVC Camera'
+            if COLOR_FIX_ENABLED:
+                window_name += ' | Color Fixed'
+            cv2.imshow(window_name, enhanced_frame)
                 
     except KeyboardInterrupt:
         print("\nInterrupted by user")

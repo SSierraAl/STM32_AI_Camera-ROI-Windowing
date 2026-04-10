@@ -474,11 +474,10 @@ static void main_thread_fct(void *arg)
    app_run();
    
    /* 
-    * Start automatic ROI switching every 2 seconds.
-    * The STM32 will switch ROIs in the background.
-    * When you reconnect the Python client, you'll see the new ROI.
+    * ROI switching is now MANUAL via serial commands from Python.
+    * Press SPACE in Python to switch ROIs.
+    * Automatic switching is DISABLED.
     */
-   CAM_StartROISwitcher(5000);
    /* ============================================
       ROI REGISTER TEST (Optional - for debugging)
       ============================================ */
