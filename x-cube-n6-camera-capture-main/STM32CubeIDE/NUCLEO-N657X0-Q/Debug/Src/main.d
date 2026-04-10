@@ -1,5 +1,5 @@
 Src/main.o: \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/Src/main.c \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/Src/main.c \
  ../../../Inc/app.h ../../../Inc/app_config.h \
  ../../../Inc/app_fuseprogramming.h ../../../Inc/main.h \
  ../../../STM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Inc/stm32n6xx_hal.h \

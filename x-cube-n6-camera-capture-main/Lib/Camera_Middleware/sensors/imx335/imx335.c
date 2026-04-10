@@ -790,6 +790,93 @@ int32_t IMX335_MirrorFlipConfig(IMX335_Object_t *pObj, uint32_t Config)
 }
 
 /**
+  * @brief  Set ROI window on IMX335 sensor using AREA3 registers
+  * @param  pObj    pointer to component object
+  * @param  x_start Horizontal start pixel (0-2591)
+  * @param  y_start Vertical start line (0-1943)
+  * @param  width   Window width (1-2592)
+  * @param  height  Window height (1-1944)
+  * @retval Component status
+  * @note   This function sets the ROI using native AREA3 registers
+  *         The sensor must be in STANDBY mode before calling this function
+  */
+int32_t IMX335_SetROI(IMX335_Object_t *pObj, uint16_t x_start, uint16_t y_start, 
+                       uint16_t width, uint16_t height)
+{
+  int32_t ret = IMX335_OK;
+  uint16_t x_end = x_start + width - 1;
+  uint16_t y_end = y_start + height - 1;
+  uint8_t hold;
+  uint8_t mode;
+  uint8_t data[2];
+
+  /* Validate parameters */
+  if (x_start > 2591 || y_start > 1943 || 
+      x_end > 2591 || y_end > 1943 ||
+      width == 0 || height == 0)
+  {
+    return IMX335_ERROR;
+  }
+
+  /* Put sensor in STANDBY mode for register writes */
+  mode = IMX335_MODE_STANDBY;
+  ret = imx335_write_reg(&pObj->Ctx, IMX335_REG_MODE_SELECT, &mode, 1);
+  if (ret != IMX335_OK)
+  {
+    return ret;
+  }
+  
+  /* Small delay for mode change to take effect */
+  IMX335_Delay(pObj, 10);
+
+  /* Set HOLD bit to prevent intermediate states */
+  hold = 1;
+  ret = imx335_write_reg(&pObj->Ctx, IMX335_REG_HOLD, &hold, 1);
+  if (ret != IMX335_OK)
+  {
+    return ret;
+  }
+
+  /* Write AREA3 window registers (16-bit, little-endian) */
+  /* AREA3_ST_ADR_1 (0x3074-0x3075) - X start address */
+  data[0] = x_start & 0xFF;
+  data[1] = (x_start >> 8) & 0xFF;
+  ret = imx335_write_reg(&pObj->Ctx, 0x3074, data, 2);
+  if (ret != IMX335_OK) return ret;
+
+  /* AREA3_ST_ADR_2 (0x3076-0x3077) - Y start address */
+  data[0] = y_start & 0xFF;
+  data[1] = (y_start >> 8) & 0xFF;
+  ret = imx335_write_reg(&pObj->Ctx, 0x3076, data, 2);
+  if (ret != IMX335_OK) return ret;
+
+  /* AREA3_END_ADR_1 (0x3078-0x3079) - X end address */
+  data[0] = x_end & 0xFF;
+  data[1] = (x_end >> 8) & 0xFF;
+  ret = imx335_write_reg(&pObj->Ctx, 0x3078, data, 2);
+  if (ret != IMX335_OK) return ret;
+
+  /* AREA3_END_ADR_2 (0x307A-0x307B) - Y end address */
+  data[0] = y_end & 0xFF;
+  data[1] = (y_end >> 8) & 0xFF;
+  ret = imx335_write_reg(&pObj->Ctx, 0x307A, data, 2);
+  if (ret != IMX335_OK) return ret;
+
+  /* Clear HOLD bit to apply changes */
+  hold = 0;
+  ret = imx335_write_reg(&pObj->Ctx, IMX335_REG_HOLD, &hold, 1);
+  if (ret != IMX335_OK)
+  {
+    return ret;
+  }
+
+  /* Small delay for settings to take effect */
+  IMX335_Delay(pObj, 10);
+
+  return IMX335_OK;
+}
+
+/**
   * @brief  Set the Test Pattern Generator
   * @param  pObj  pointer to component object
   * @param  mode Pattern mode:

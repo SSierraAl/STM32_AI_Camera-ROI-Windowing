@@ -1,5 +1,5 @@
 Src/app_cam.o: \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/Src/app_cam.c \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/Src/app_cam.c \
  ../../../Lib/Camera_Middleware/cmw_camera.h \
  ../../../Lib/Camera_Middleware/cmw_errno.h \
  ../../../Inc/cmw_camera_conf.h \

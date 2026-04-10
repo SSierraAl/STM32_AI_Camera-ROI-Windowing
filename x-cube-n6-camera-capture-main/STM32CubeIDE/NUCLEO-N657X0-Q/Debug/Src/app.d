@@ -1,5 +1,5 @@
 Src/app.o: \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/Src/app.c \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/Src/app.c \
  ../../../Inc/app.h ../../../Inc/app_cam.h ../../../Inc/app_config.h \
  ../../../Inc/app_jpg.h ../../../Lib/Camera_Middleware/cmw_camera.h \
  ../../../Lib/Camera_Middleware/cmw_errno.h \
@@ -71,7 +71,11 @@ Src/app.o: \
  ../../../Lib/FreeRTOS/Source/include/semphr.h \
  ../../../Lib/FreeRTOS/Source/include/queue.h \
  ../../../Lib/FreeRTOS/Source/include/task.h ../../../Inc/utils.h \
- ../../../Lib/uvcl/Inc/uvcl.h
+ ../../../Lib/uvcl/Inc/uvcl.h ../../../Lib/Camera_Middleware/cmw_io.h \
+ ../../../Lib/Camera_Middleware/sensors/imx335/imx335.h \
+ ../../../Lib/Camera_Middleware/sensors/imx335/imx335_reg.h \
+ ../../../STM32Cube_FW_N6/Drivers/CMSIS/Include/cmsis_compiler.h \
+ ../../../Lib/Camera_Middleware/sensors/imx335/imx335_reg.h
 ../../../Inc/app.h:
 ../../../Inc/app_cam.h:
 ../../../Inc/app_config.h:
@@ -148,3 +152,8 @@ Src/app.o: \
 ../../../Lib/FreeRTOS/Source/include/task.h:
 ../../../Inc/utils.h:
 ../../../Lib/uvcl/Inc/uvcl.h:
+../../../Lib/Camera_Middleware/cmw_io.h:
+../../../Lib/Camera_Middleware/sensors/imx335/imx335.h:
+../../../Lib/Camera_Middleware/sensors/imx335/imx335_reg.h:
+../../../STM32Cube_FW_N6/Drivers/CMSIS/Include/cmsis_compiler.h:
+../../../Lib/Camera_Middleware/sensors/imx335/imx335_reg.h:

@@ -1,5 +1,5 @@
 Src/freertos_bsp.o: \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/Src/freertos_bsp.c \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/Src/freertos_bsp.c \
  ../../../STM32Cube_FW_N6/Drivers/CMSIS/Include/cmsis_compiler.h \
  ../../../STM32Cube_FW_N6/Drivers/CMSIS/Include/cmsis_gcc.h \
  ../../../Lib/FreeRTOS/Source/include/FreeRTOS.h \

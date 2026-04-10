@@ -1,5 +1,5 @@
 STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_initialize_complete.o: \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_initialize_complete.c \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32_initialize_complete.c \
  ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_api.h \
  ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/ports/generic/inc/ux_port.h \
  ../../../Lib/uvcl/Inc/usbx/ux_user.h \
@@ -7,7 +7,7 @@ STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_
  ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_system.h \
  ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_system.h \
  ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_utility.h \
- C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h \
+ C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h \
  ../../../Lib/uvcl/Inc/usbx/ux_stm32_config.h \
  ../../../STM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Inc/stm32n6xx_hal.h \
  ../../../Inc/stm32n6xx_hal_conf.h \
@@ -62,7 +62,7 @@ STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_
 ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_system.h:
 ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_system.h:
 ../../../STM32Cube_FW_N6/Middlewares/ST/usbx/common/core/inc/ux_utility.h:
-C:/Users/ssierra/Downloads/MASSIF/STM32/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h:
+C:/Users/ssierra/Downloads/MASSIF-ROI-Windowing/x-cube-n6-camera-capture-main/STM32Cube_FW_N6/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h:
 ../../../Lib/uvcl/Inc/usbx/ux_stm32_config.h:
 ../../../STM32Cube_FW_N6/Drivers/STM32N6xx_HAL_Driver/Inc/stm32n6xx_hal.h:
 ../../../Inc/stm32n6xx_hal_conf.h:

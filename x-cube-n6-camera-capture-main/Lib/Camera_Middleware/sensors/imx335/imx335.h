@@ -137,6 +137,8 @@ int32_t IMX335_SetFrequency(IMX335_Object_t *pObj, int32_t frequency);
 int32_t IMX335_SetFramerate(IMX335_Object_t *pObj, int32_t framerate);
 int32_t IMX335_MirrorFlipConfig(IMX335_Object_t *pObj, uint32_t Config);
 int32_t IMX335_SetTestPattern(IMX335_Object_t *pObj, int32_t mode);
+int32_t IMX335_SetROI(IMX335_Object_t *pObj, uint16_t x_start, uint16_t y_start, 
+                       uint16_t width, uint16_t height);
 
 /**
   * @}

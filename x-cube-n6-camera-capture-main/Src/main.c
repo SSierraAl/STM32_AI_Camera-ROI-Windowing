@@ -24,6 +24,9 @@
 #include "main.h"
 #include "npu_cache.h"
 
+/* Include ROI test header */
+#include "app.h"
+
 #include "stm32n6xx_nucleo.h"
 #include "stm32n6xx_nucleo_bus.h"
 #include "stm32n6xx_nucleo_xspi.h"
@@ -361,6 +364,67 @@ static void main_thread_fct(void *arg)
   LL_MISC_EnableClockLowPower(~0);
 
   app_run();
+
+  /* ============================================
+     ROI REGISTER TEST
+     Call this function to read IMX335 sensor registers
+     Comment out after testing if not needed
+     ============================================ */
+  printf("\r\n\n>>> Starting IMX335 Register Test <<<\n");
+  printf("This will read sensor registers via I2C\r\n");
+  printf("Waiting 2 seconds for camera threads to initialize...\r\n");
+  HAL_Delay(2000);
+  App_TestIMX335Registers();
+  
+  /* ============================================
+     DYNAMIC ROI CONFIGURATION - FIXED SIZE, VARIABLE POSITION
+     This configures multiple ROI positions with the SAME output size
+     The sensor will output 640x480 from different positions
+     ============================================ */
+  
+  printf("\r\n=== Configuring Multiple ROI Positions (640x480 fixed) ===\r\n");
+  
+  /* All ROIs have the SAME output size (640x480) but different positions */
+  /* This allows dynamic switching without reconfiguring the ISP pipeline */
+  
+  /* ROI Position 0: Center */
+  App_AddROIConfig(976, 732, 640, 480);
+  
+  /* ROI Position 1: Top-Left */
+  App_AddROIConfig(0, 0, 640, 480);
+  
+  /* ROI Position 2: Top-Right */
+  App_AddROIConfig(1952, 0, 640, 480);
+  
+  /* ROI Position 3: Bottom-Left */
+  App_AddROIConfig(0, 1464, 640, 480);
+  
+  /* ROI Position 4: Bottom-Right */
+  App_AddROIConfig(1952, 1464, 640, 480);
+  
+  /* ROI Position 5: Center-Left */
+  App_AddROIConfig(0, 732, 640, 480);
+  
+  /* ROI Position 6: Center-Right */
+  App_AddROIConfig(1952, 732, 640, 480);
+  
+  /* ROI Position 7: Center-Top */
+  App_AddROIConfig(976, 0, 640, 480);
+  
+  /* List all configured ROI positions */
+  App_ListROIs();
+  
+  printf("\r\n=== DYNAMIC ROI SYSTEM READY ===\r\n");
+  printf("All ROIs: 640x480 output size (fixed)\r\n");
+  printf("Positions: 8 different regions on the sensor\r\n");
+  printf("To switch ROI during streaming, call App_ChangeROI(index)\r\n");
+  
+  /* START THE PERIODIC ROI SWITCHER */
+  /* This will automatically switch ROI every 2000ms (2 seconds) */
+  App_StartROISwitcher(2000);  /* 2000ms = 2 seconds */
+  
+  printf("ROI Switcher: STARTED (switches every 2 seconds)\r\n");
+  printf("=================================================\r\n");
 
   vTaskDelete(NULL);
 }
