@@ -21,6 +21,8 @@
 #include "app_config.h"
 #include "stm32n6xx.h"
 #include "utils.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* Define sensor orientation */
 #if CAMERA_SELFY == 1
@@ -38,6 +40,168 @@
 /* Define sensor width x height size. 0x0 means full frame */
 #define SENSOR_WIDTH     0
 #define SENSOR_HEIGHT    0
+
+/* 
+ * ROI CONFIGURATION - Multiple ROI positions for switching
+ * Each ROI defines a region on the sensor (2592x1944) that outputs 640x480
+ */
+#define NUM_ROIS 8
+
+/* ROI Definitions - 8 positions covering the sensor */
+static const ROI_Def_t ROIS[NUM_ROIS] = {
+  {976,  732,  640, 480},  /* ROI 0: Center */
+  {0,    0,    640, 480},  /* ROI 1: Top-Left */
+  {1952, 0,    640, 480},  /* ROI 2: Top-Right */
+  {0,    1464, 640, 480},  /* ROI 3: Bottom-Left */
+  {1952, 1464, 640, 480},  /* ROI 4: Bottom-Right */
+  {0,    732,  640, 480},  /* ROI 5: Center-Left */
+  {1952, 732,  640, 480},  /* ROI 6: Center-Right */
+  {976,  0,    640, 480},  /* ROI 7: Center-Top */
+};
+
+/* Current active ROI index */
+static int current_roi_index = 0;
+
+/* Flag to enable/disable automatic ROI switching */
+static uint8_t roi_switcher_enabled = 0;
+
+/* Flag to signal camera restart needed after ROI switch */
+uint8_t roi_changed_flag = 0;
+
+/* Function pointer to restart camera pipeline (set by app.c) */
+static void (*camera_restart_callback)(void) = NULL;
+
+/* Set callback for camera restart */
+void CAM_SetCameraRestartCallback(void (*callback)(void))
+{
+  camera_restart_callback = callback;
+}
+
+/* Trigger camera restart if callback is set */
+void CAM_TriggerCameraRestart(void)
+{
+  if (camera_restart_callback != NULL) {
+    printf("[CAM] Triggering camera restart...\r\n");
+    camera_restart_callback();
+  }
+}
+
+/* Switcher interval in milliseconds */
+static uint32_t roi_switch_interval_ms = 2000;
+
+/* FreeRTOS task handle for ROI switcher */
+static TaskHandle_t roi_switcher_task_handle = NULL;
+static StaticTask_t roi_switcher_task_buffer;
+static StackType_t roi_switcher_task_stack[256];
+
+/* Get current ROI index */
+int CAM_GetCurrentROIIndex(void)
+{
+  return current_roi_index;
+}
+
+/* Get ROI definition by index */
+const ROI_Def_t* CAM_GetROIDefinition(int index)
+{
+  if (index < 0 || index >= NUM_ROIS) {
+    return NULL;
+  }
+  return &ROIS[index];
+}
+
+/* Get number of configured ROIs */
+int CAM_GetNumROIs(void)
+{
+  return NUM_ROIS;
+}
+
+/* 
+ * Switch to a specific ROI - updates the index for next camera init
+ * The new ROI will be applied when streaming starts (next connection)
+ */
+int CAM_SwitchROI(int new_roi_index)
+{
+  if (new_roi_index < 0 || new_roi_index >= NUM_ROIS) {
+    printf("[CAM] ERROR: Invalid ROI index %d\r\n", new_roi_index);
+    return -1;
+  }
+  
+  const ROI_Def_t *roi = &ROIS[new_roi_index];
+  
+  printf("[CAM] Switching to ROI #%d: x=%u, y=%u, size=%dx%d\r\n",
+         new_roi_index, roi->x, roi->y, roi->width, roi->height);
+  
+  /* Just update the index - new ROI applies on next stream start */
+  current_roi_index = new_roi_index;
+  
+  printf("[CAM] ROI #%d selected. Will apply on next connection.\r\n", new_roi_index);
+  return 0;
+}
+
+/* ROI Switcher Task - switches ROI every N seconds */
+static void roi_switcher_task(void *argument)
+{
+  int next_roi = 0;
+  
+  printf("[CAM] ROI Switcher task started (interval: %lu ms)\r\n", roi_switch_interval_ms);
+  
+  while (roi_switcher_enabled) {
+    /* Move to next ROI */
+    next_roi++;
+    if (next_roi >= NUM_ROIS) {
+      next_roi = 0;
+    }
+    
+    CAM_SwitchROI(next_roi);
+    
+    /* Signal that ROI changed - camera needs to restart */
+    roi_changed_flag = 1;
+    
+    /* Wait for interval */
+    vTaskDelay(pdMS_TO_TICKS(roi_switch_interval_ms));
+  }
+  
+  printf("[CAM] ROI Switcher task stopped\r\n");
+  vTaskDelete(NULL);
+}
+
+/* Start automatic ROI switching */
+void CAM_StartROISwitcher(int interval_ms)
+{
+  if (roi_switcher_enabled) {
+    printf("[CAM] ROI Switcher already running\r\n");
+    return;
+  }
+  
+  roi_switch_interval_ms = interval_ms;
+  roi_switcher_enabled = 1;
+  
+  /* Create the switcher task */
+  roi_switcher_task_handle = xTaskCreateStatic(
+    roi_switcher_task,
+    "roi_switcher",
+    256,
+    NULL,
+    2,  /* Priority */
+    roi_switcher_task_stack,
+    &roi_switcher_task_buffer
+  );
+  
+  printf("[CAM] ROI Switcher started: switches every %d ms\r\n", interval_ms);
+}
+
+/* Stop automatic ROI switching */
+void CAM_StopROISwitcher(void)
+{
+  roi_switcher_enabled = 0;
+  
+  if (roi_switcher_task_handle != NULL) {
+    vTaskDelete(roi_switcher_task_handle);
+    roi_switcher_task_handle = NULL;
+  }
+  
+  printf("[CAM] ROI Switcher stopped\r\n");
+}
 
 static const char *sensor_names[] = {
   "CMW_UNKNOWN",
@@ -103,28 +267,21 @@ static int CAM_FormatToBpp(int dcmipp_output_format)
   return bpp;
 }
 
-/* Keep display output aspect ratio using crop area */
+/* Configure ROI crop based on current ROI index */
 static void CAM_InitCropConfig(CMW_Manual_roi_area_t *roi, int sensor_width, int sensor_height, CAM_conf_t *conf)
 {
-  /* 
-   * CONFIGURE ROI CROP - This defines which region of the sensor to capture
-   * Default: x=976, y=732, width=640, height=480
-   * Modify these values to change the ROI position/size
-   */
+  /* Get the current ROI definition */
+  const ROI_Def_t *current_roi = &ROIS[current_roi_index];
   
-  /* ROI configuration - MODIFY THESE VALUES to change the cropped region */
-  uint32_t roi_x = 976;      /* X start position on sensor (0-2591) */
-  uint32_t roi_y = 732;      /* Y start position on sensor (0-1943) */
-  uint32_t roi_w = 640;      /* ROI width */
-  uint32_t roi_h = 480;      /* ROI height */
-  
-  printf("[CAM] Configuring ROI crop: x=%u, y=%u, w=%u, h=%u\r\n", roi_x, roi_y, roi_w, roi_h);
+  printf("[CAM] Configuring ROI crop (ROI #%d): x=%u, y=%u, w=%u, h=%u\r\n",
+         current_roi_index, current_roi->x, current_roi->y, 
+         current_roi->width, current_roi->height);
   
   /* Set the crop area to the desired ROI region */
-  roi->width = roi_w;
-  roi->height = roi_h;
-  roi->offset_x = roi_x;
-  roi->offset_y = roi_y;
+  roi->width = current_roi->width;
+  roi->height = current_roi->height;
+  roi->offset_x = current_roi->x;
+  roi->offset_y = current_roi->y;
   
   printf("[CAM] ROI crop configured: offset=(%u,%u), size=%dx%d\r\n", 
          roi->offset_x, roi->offset_y, roi->width, roi->height);

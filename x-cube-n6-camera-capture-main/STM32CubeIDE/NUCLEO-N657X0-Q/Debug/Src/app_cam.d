@@ -55,7 +55,17 @@ Src/app_cam.o: \
  ../../../Lib/Camera_Middleware/ISP_Library/isp/Inc/isp_core.h \
  ../../../Inc/isp_conf.h \
  ../../../Lib/Camera_Middleware/ISP_Library/isp/Inc/isp_platform.h \
- ../../../Inc/app_cam.h ../../../Inc/app_config.h ../../../Inc/utils.h
+ ../../../Inc/app_cam.h ../../../Inc/app_config.h ../../../Inc/utils.h \
+ ../../../Lib/FreeRTOS/Source/include/FreeRTOS.h \
+ ../../../Inc/FreeRTOSConfig.h \
+ ../../../Lib/FreeRTOS/Source/include/projdefs.h \
+ ../../../Lib/FreeRTOS/Source/include/portable.h \
+ ../../../Lib/FreeRTOS/Source/include/deprecated_definitions.h \
+ ../../../Lib/FreeRTOS/Source/portable/GCC/ARM_CM55_NTZ/non_secure/portmacro.h \
+ ../../../Lib/FreeRTOS/Source/portable/GCC/ARM_CM55_NTZ/non_secure/portmacrocommon.h \
+ ../../../Lib/FreeRTOS/Source/include/mpu_wrappers.h \
+ ../../../Lib/FreeRTOS/Source/include/task.h \
+ ../../../Lib/FreeRTOS/Source/include/list.h
 ../../../Lib/Camera_Middleware/cmw_camera.h:
 ../../../Lib/Camera_Middleware/cmw_errno.h:
 ../../../Inc/cmw_camera_conf.h:
@@ -114,3 +124,13 @@ Src/app_cam.o: \
 ../../../Inc/app_cam.h:
 ../../../Inc/app_config.h:
 ../../../Inc/utils.h:
+../../../Lib/FreeRTOS/Source/include/FreeRTOS.h:
+../../../Inc/FreeRTOSConfig.h:
+../../../Lib/FreeRTOS/Source/include/projdefs.h:
+../../../Lib/FreeRTOS/Source/include/portable.h:
+../../../Lib/FreeRTOS/Source/include/deprecated_definitions.h:
+../../../Lib/FreeRTOS/Source/portable/GCC/ARM_CM55_NTZ/non_secure/portmacro.h:
+../../../Lib/FreeRTOS/Source/portable/GCC/ARM_CM55_NTZ/non_secure/portmacrocommon.h:
+../../../Lib/FreeRTOS/Source/include/mpu_wrappers.h:
+../../../Lib/FreeRTOS/Source/include/task.h:
+../../../Lib/FreeRTOS/Source/include/list.h:

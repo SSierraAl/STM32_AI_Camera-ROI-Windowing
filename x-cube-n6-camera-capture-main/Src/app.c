@@ -38,7 +38,8 @@
 #include "semphr.h"
 #include "utils.h"
 #include "uvcl.h"
-/* ROI test support - no additional includes needed */
+#include "app_cam.h"
+/* ROI test support */
 
 /* Disable jpeg support for nucleo due to lack of memory */
 #ifdef STM32N6570_NUCLEO_REV
@@ -1413,10 +1414,16 @@ static void uvc_thread_fct(void *arg)
   struct streaming_ctx current = { 0 };
   struct buffer *buffer;
   int is_jpeg;
+  int roi_restart_pending = 0;
 
   while (1) {
     /* wait for stream request */
     while (!sr_is_streaming(&streaming_req, &current)) {
+      /* Check if ROI changed while waiting - if so, restart with new ROI */
+      if (roi_changed_flag) {
+        roi_changed_flag = 0;
+        printf("[UVC] ROI changed detected, will restart with new ROI\r\n");
+      }
       HAL_Delay(1);
     }
 
@@ -1428,19 +1435,13 @@ static void uvc_thread_fct(void *arg)
     capture_init(&current.stream, is_jpeg);
     /* looping until no more streaming */
     while (1) {
-      do {
-        buffer = lp_pop(&capt_ready_buffers, 0);
-        if (!buffer)
-          HAL_Delay(1);
-      } while (!buffer && sr_is_valid(&streaming_req, &current));
-
-      if (!buffer)
+      /* Check if ROI changed during streaming */
+      if (roi_changed_flag) {
+        roi_changed_flag = 0;
+        printf("[UVC] ROI changed during streaming, stopping to apply new ROI...\r\n");
+        roi_restart_pending = 1;
         break;
-
-      if (is_jpeg)
-        send_jpg_frame(buffer);
-      else
-        send_raw_frame(buffer);
+      }
     }
 
     printf("End streaming\r\n");

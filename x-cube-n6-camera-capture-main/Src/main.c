@@ -475,7 +475,13 @@ static void main_thread_fct(void *arg)
    
    /* NOW start the camera system - sensor already configured */
    app_run();
-
+   
+   /* 
+    * Start automatic ROI switching every 2 seconds.
+    * The STM32 will switch ROIs in the background.
+    * When you reconnect the Python client, you'll see the new ROI.
+    */
+   CAM_StartROISwitcher(1500);
    /* ============================================
       ROI REGISTER TEST (Optional - for debugging)
       ============================================ */
