@@ -363,70 +363,136 @@ static void main_thread_fct(void *arg)
   LL_APB5_GRP1_EnableClockLowPower(~0);
   LL_MISC_EnableClockLowPower(~0);
 
-  app_run();
+   /* ============================================
+      DYNAMIC ROI CONFIGURATION - FIXED SIZE, VARIABLE POSITION
+      CRITICAL: ROI must be configured BEFORE app_run() so it applies
+      before the CMW middleware initializes the sensor.
+      ============================================ */
+   
+   printf("\r\n=== Configuring ROI BEFORE Camera Init (640x480) ===\r\n");
+   
+   /* Configure the FIRST ROI that will be used at startup */
+   /* This ROI will be active when streaming starts */
+   App_AddROIConfig(976, 732, 640, 480);  /* ROI #0: Center position */
+   
+   /* Activate the first ROI - this will be applied during CAM_Init */
+   App_ActivateROI(0);
+   
+   printf("[ROI] Active ROI at startup: x=976, y=732, size=640x480\r\n");
+   printf("[ROI] NOTE: Camera will output 640x480 from this region\r\n");
+   
+   /* Add other ROI positions for reference (not used at startup) */
+   App_AddROIConfig(0, 0, 640, 480);       /* ROI #1: Top-Left */
+   App_AddROIConfig(1952, 0, 640, 480);    /* ROI #2: Top-Right */
+   App_AddROIConfig(0, 1464, 640, 480);    /* ROI #3: Bottom-Left */
+   App_AddROIConfig(1952, 1464, 640, 480); /* ROI #4: Bottom-Right */
+   App_AddROIConfig(0, 732, 640, 480);     /* ROI #5: Center-Left */
+   App_AddROIConfig(1952, 732, 640, 480);  /* ROI #6: Center-Right */
+   App_AddROIConfig(976, 0, 640, 480);     /* ROI #7: Center-Top */
+   
+   App_ListROIs();
+   
+   printf("\r\n=== ROI CONFIGURED - Starting Camera ===\r\n");
+   printf("Camera will output 640x480 from region x=976, y=732\r\n");
+   printf("=================================================\r\n");
+   
+   /* 
+    * CRITICAL: Apply ROI to sensor BEFORE any camera initialization.
+    * The CMW middleware will detect these registers and use them.
+    * This MUST happen before app_run() which starts the camera threads.
+    */
+   printf("[ROI] Applying ROI to sensor registers NOW (before camera init)...\r\n");
+   
+   /* Power on camera and initialize I2C */
+   App_Camera_PowerOn();
+   App_I2C_Init();
+   
+   /* Now apply the ROI - this happens BEFORE CMW middleware takes control */
+   ROI_Config_t *active_roi = App_GetCurrentROI();
+   if (active_roi != NULL) {
+     /* Manually write registers (bypass App_ApplyROIToSensor which has retry logic issues) */
+     uint8_t data[4];
+     uint16_t x_end = active_roi->x_start + active_roi->sensor_width - 1;
+     uint16_t y_end = active_roi->y_start + active_roi->sensor_height - 1;
+     uint32_t vmax = active_roi->sensor_height + 100;
+     uint32_t shutter = vmax - 100;
+     uint8_t hold, mode;
+     
+     printf("[ROI] Writing ROI registers directly to sensor...\r\n");
+     
+     /* Put sensor in STANDBY */
+     mode = 0x01;
+     BSP_I2C2_WriteReg16(0x34, 0x3000, &mode, 1);
+     HAL_Delay(10);
+     
+     /* Set HOLD */
+     hold = 1;
+     BSP_I2C2_WriteReg16(0x34, 0x3001, &hold, 1);
+     
+     /* Write AREA3 registers */
+     data[0] = active_roi->x_start & 0xFF;
+     data[1] = (active_roi->x_start >> 8) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x3074, data, 2);
+     
+     data[0] = active_roi->y_start & 0xFF;
+     data[1] = (active_roi->y_start >> 8) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x3076, data, 2);
+     
+     data[0] = x_end & 0xFF;
+     data[1] = (x_end >> 8) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x3078, data, 2);
+     
+     data[0] = y_end & 0xFF;
+     data[1] = (y_end >> 8) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x307A, data, 2);
+     
+     /* Write VMAX */
+     data[0] = vmax & 0xFF;
+     data[1] = (vmax >> 8) & 0xFF;
+     data[2] = (vmax >> 16) & 0xFF;
+     data[3] = (vmax >> 24) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x3030, data, 4);
+     
+     /* Write SHUTTER */
+     data[0] = shutter & 0xFF;
+     data[1] = (shutter >> 8) & 0xFF;
+     data[2] = (shutter >> 16) & 0xFF;
+     BSP_I2C2_WriteReg16(0x34, 0x3058, data, 3);
+     
+     /* Clear HOLD */
+     hold = 0;
+     BSP_I2C2_WriteReg16(0x34, 0x3001, &hold, 1);
+     HAL_Delay(20);
+     
+     /* Return to streaming mode */
+     mode = 0x00;
+     BSP_I2C2_WriteReg16(0x34, 0x3000, &mode, 1);
+     
+     printf("[ROI] Sensor configured! ROI: x=%u, y=%u, size=%dx%d\r\n",
+            active_roi->x_start, active_roi->y_start,
+            active_roi->sensor_width, active_roi->sensor_height);
+   }
+   
+   /* NOW start the camera system - sensor already configured */
+   app_run();
 
-  /* ============================================
-     ROI REGISTER TEST
-     Call this function to read IMX335 sensor registers
-     Comment out after testing if not needed
-     ============================================ */
-  printf("\r\n\n>>> Starting IMX335 Register Test <<<\n");
-  printf("This will read sensor registers via I2C\r\n");
-  printf("Waiting 2 seconds for camera threads to initialize...\r\n");
-  HAL_Delay(2000);
-  App_TestIMX335Registers();
-  
-  /* ============================================
-     DYNAMIC ROI CONFIGURATION - FIXED SIZE, VARIABLE POSITION
-     This configures multiple ROI positions with the SAME output size
-     The sensor will output 640x480 from different positions
-     ============================================ */
-  
-  printf("\r\n=== Configuring Multiple ROI Positions (640x480 fixed) ===\r\n");
-  
-  /* All ROIs have the SAME output size (640x480) but different positions */
-  /* This allows dynamic switching without reconfiguring the ISP pipeline */
-  
-  /* ROI Position 0: Center */
-  App_AddROIConfig(976, 732, 640, 480);
-  
-  /* ROI Position 1: Top-Left */
-  App_AddROIConfig(0, 0, 640, 480);
-  
-  /* ROI Position 2: Top-Right */
-  App_AddROIConfig(1952, 0, 640, 480);
-  
-  /* ROI Position 3: Bottom-Left */
-  App_AddROIConfig(0, 1464, 640, 480);
-  
-  /* ROI Position 4: Bottom-Right */
-  App_AddROIConfig(1952, 1464, 640, 480);
-  
-  /* ROI Position 5: Center-Left */
-  App_AddROIConfig(0, 732, 640, 480);
-  
-  /* ROI Position 6: Center-Right */
-  App_AddROIConfig(1952, 732, 640, 480);
-  
-  /* ROI Position 7: Center-Top */
-  App_AddROIConfig(976, 0, 640, 480);
-  
-  /* List all configured ROI positions */
-  App_ListROIs();
-  
-  printf("\r\n=== DYNAMIC ROI SYSTEM READY ===\r\n");
-  printf("All ROIs: 640x480 output size (fixed)\r\n");
-  printf("Positions: 8 different regions on the sensor\r\n");
-  printf("To switch ROI during streaming, call App_ChangeROI(index)\r\n");
-  
-  /* START THE PERIODIC ROI SWITCHER */
-  /* This will automatically switch ROI every 2000ms (2 seconds) */
-  App_StartROISwitcher(2000);  /* 2000ms = 2 seconds */
-  
-  printf("ROI Switcher: STARTED (switches every 2 seconds)\r\n");
-  printf("=================================================\r\n");
+   /* ============================================
+      ROI REGISTER TEST (Optional - for debugging)
+      ============================================ */
+   printf("\r\n\n>>> IMX335 Register Test <<<\n");
+   printf("Waiting 3 seconds for camera to stabilize...\r\n");
+   HAL_Delay(3000);
+   App_TestIMX335Registers();
+   
+   /* NOTE: Dynamic ROI switching is NOT supported during streaming.
+    * The camera outputs a fixed 640x480 region configured at startup.
+    * To change ROI, you must stop streaming, reconfigure, and restart.
+    */
+   
+   printf("\r\n=== Camera Running - ROI Fixed at Startup ===\r\n");
+   printf("Press any key to stop...\r\n");
 
-  vTaskDelete(NULL);
+   vTaskDelete(NULL);
 }
 
 HAL_StatusTypeDef MX_DCMIPP_ClockConfig(DCMIPP_HandleTypeDef *hdcmipp)

@@ -1,4 +1,4 @@
- /**
+/**
  ******************************************************************************
  * @file    app_cam.c
  * @author  GPM Application Team
@@ -106,17 +106,28 @@ static int CAM_FormatToBpp(int dcmipp_output_format)
 /* Keep display output aspect ratio using crop area */
 static void CAM_InitCropConfig(CMW_Manual_roi_area_t *roi, int sensor_width, int sensor_height, CAM_conf_t *conf)
 {
-  const float ratiox = (float)sensor_width / conf->capture_width;
-  const float ratioy = (float)sensor_height / conf->capture_height;
-  const float ratio = MIN(ratiox, ratioy);
-
-  assert(ratio >= 1);
-  assert(ratio < 64);
-
-  roi->width = (uint32_t) MIN(conf->capture_width * ratio, sensor_width);
-  roi->height = (uint32_t) MIN(conf->capture_height * ratio, sensor_height);
-  roi->offset_x = (sensor_width - roi->width + 1) / 2;
-  roi->offset_y = (sensor_height - roi->height + 1) / 2;
+  /* 
+   * CONFIGURE ROI CROP - This defines which region of the sensor to capture
+   * Default: x=976, y=732, width=640, height=480
+   * Modify these values to change the ROI position/size
+   */
+  
+  /* ROI configuration - MODIFY THESE VALUES to change the cropped region */
+  uint32_t roi_x = 976;      /* X start position on sensor (0-2591) */
+  uint32_t roi_y = 732;      /* Y start position on sensor (0-1943) */
+  uint32_t roi_w = 640;      /* ROI width */
+  uint32_t roi_h = 480;      /* ROI height */
+  
+  printf("[CAM] Configuring ROI crop: x=%u, y=%u, w=%u, h=%u\r\n", roi_x, roi_y, roi_w, roi_h);
+  
+  /* Set the crop area to the desired ROI region */
+  roi->width = roi_w;
+  roi->height = roi_h;
+  roi->offset_x = roi_x;
+  roi->offset_y = roi_y;
+  
+  printf("[CAM] ROI crop configured: offset=(%u,%u), size=%dx%d\r\n", 
+         roi->offset_x, roi->offset_y, roi->width, roi->height);
 }
 
 static void CAM_EnableYuv(uint32_t Pipe)

@@ -377,24 +377,14 @@ static int camera_powered = 0;
 
 #define MAX_ROI_CONFIGS 8
 
-typedef struct {
-  uint16_t x_start;      /* ROI start X on sensor */
-  uint16_t y_start;      /* ROI start Y on sensor */
-  uint16_t width;        /* Output width (can be scaled) */
-  uint16_t height;       /* Output height (can be scaled) */
-  uint16_t sensor_width; /* Actual sensor readout width */
-  uint16_t sensor_height;/* Actual sensor readout height */
-  uint8_t  active;       /* Is this ROI configuration active */
-} ROI_Config_t;
-
-/* ROI configuration storage */
+/* ROI configuration storage - ROI_Config_t is defined in app.h */
 static ROI_Config_t roi_configs[MAX_ROI_CONFIGS];
 static int roi_config_count = 0;
 static int current_roi_index = -1;
 
 /* Forward declarations for functions used before definition */
-static int App_IMX335_WriteReg(uint16_t reg, uint8_t *data, uint16_t len);
-static int App_IMX335_ReadReg(uint16_t reg, uint8_t *data, uint16_t len);
+int App_IMX335_WriteReg(uint16_t reg, uint8_t *data, uint16_t len);
+int App_IMX335_ReadReg(uint16_t reg, uint8_t *data, uint16_t len);
 
 /* Get current ROI configuration */
 ROI_Config_t* App_GetCurrentROI(void)
@@ -457,7 +447,12 @@ void App_DeactivateROI(void)
   printf("[ROI] ROI deactivated (full sensor)\r\n");
 }
 
-/* Apply ROI to sensor registers */
+/* 
+ * Apply ROI to sensor registers BEFORE CMW middleware initialization.
+ * This MUST be called before CAM_Init() to configure the sensor properly.
+ * 
+ * The CMW middleware will then use this ROI configuration for streaming.
+ */
 static int App_ApplyROIToSensor(ROI_Config_t *cfg)
 {
   uint8_t data[4];
@@ -471,7 +466,7 @@ static int App_ApplyROIToSensor(ROI_Config_t *cfg)
     return -1;
   }
   
-  printf("[ROI] Applying to sensor: x=%u, y=%u, w=%u, h=%u\r\n", 
+  printf("[ROI] Configuring sensor for ROI: x=%u, y=%u, w=%u, h=%u\r\n", 
          cfg->x_start, cfg->y_start, cfg->sensor_width, cfg->sensor_height);
   
   x_end = cfg->x_start + cfg->sensor_width - 1;
@@ -553,7 +548,9 @@ static int App_ApplyROIToSensor(ROI_Config_t *cfg)
   }
   HAL_Delay(20);
   
-  printf("[ROI] Sensor registers updated\r\n");
+  printf("[ROI] Sensor configured for ROI output: %dx%d\r\n",
+         cfg->sensor_width, cfg->sensor_height);
+  
   return 0;
 }
 
@@ -603,8 +600,10 @@ void App_ListROIs(void)
 }
 
 /* 
- * Change ROI position dynamically while keeping the same output size
- * This updates AREA3 position registers AND VMAX timing for proper frame sync
+ * Dynamic ROI switching by stopping and restarting the camera.
+ * This properly reconfigures the sensor between ROI changes.
+ * 
+ * Usage: Call this function when streaming is STOPPED (not during streaming)
  */
 int App_ChangeROI(int index)
 {
@@ -615,96 +614,61 @@ int App_ChangeROI(int index)
   
   ROI_Config_t *cfg = &roi_configs[index];
   uint8_t data[4];
-  uint8_t hold;
-  uint32_t vmax;
-  int retry_count;
-  int max_retries = 3;
+  uint8_t hold, mode;
   
-  printf("[ROI] Switching to ROI #%d: x=%u, y=%u, size=%dx%d\r\n", 
+  printf("[ROI] Changing to ROI #%d: x=%u, y=%u, size=%dx%d\r\n", 
          index, cfg->x_start, cfg->y_start, cfg->sensor_width, cfg->sensor_height);
   
-  /* Calculate VMAX for this ROI height + blanking (100 lines for safety) */
-  /* IMX335 needs sufficient vertical blanking for stable operation */
-  vmax = cfg->sensor_height + 100;
+  /* 
+   * CRITICAL: Camera must be STOPPED before changing ROI.
+   * The sensor must be in a known state for register writes.
+   */
   
-  /* CRITICAL: Wait for current frame to complete before changing registers */
-  /* This prevents register write conflicts during active frame readout */
-  HAL_Delay(30);  /* Wait at least one frame period */
+  /* Put sensor in STANDBY */
+  mode = 0x01;
+  App_IMX335_WriteReg(0x3000, &mode, 1);
+  HAL_Delay(20);
   
-  /* Put sensor in STANDBY mode first */
-  uint8_t mode = 0x01;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3000, &mode, 1) == 0) break;
-    HAL_Delay(5);
-  }
-  HAL_Delay(10);  /* Wait for sensor to enter standby */
-  
-  /* Set HOLD bit to latch all register changes at once */
+  /* Set HOLD to latch changes */
   hold = 1;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3001, &hold, 1) == 0) break;
-    HAL_Delay(5);
-  }
+  App_IMX335_WriteReg(0x3001, &hold, 1);
   
-  /* Update AREA3 position registers */
+  /* Write AREA3 registers */
   data[0] = cfg->x_start & 0xFF;
   data[1] = (cfg->x_start >> 8) & 0xFF;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3074, data, 2) == 0) break;
-    HAL_Delay(5);
-  }  /* X start */
+  App_IMX335_WriteReg(0x3074, data, 2);
   
   data[0] = cfg->y_start & 0xFF;
   data[1] = (cfg->y_start >> 8) & 0xFF;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3076, data, 2) == 0) break;
-    HAL_Delay(5);
-  }  /* Y start */
+  App_IMX335_WriteReg(0x3076, data, 2);
   
-  /* Calculate and update end positions */
   uint16_t x_end = cfg->x_start + cfg->sensor_width - 1;
   uint16_t y_end = cfg->y_start + cfg->sensor_height - 1;
   
   data[0] = x_end & 0xFF;
   data[1] = (x_end >> 8) & 0xFF;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3078, data, 2) == 0) break;
-    HAL_Delay(5);
-  }  /* X end */
+  App_IMX335_WriteReg(0x3078, data, 2);
   
   data[0] = y_end & 0xFF;
   data[1] = (y_end >> 8) & 0xFF;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x307A, data, 2) == 0) break;
-    HAL_Delay(5);
-  }  /* Y end */
+  App_IMX335_WriteReg(0x307A, data, 2);
   
-  /* CRITICAL: Update VMAX timing register for proper frame sync */
+  /* Calculate and write VMAX */
+  uint32_t vmax = cfg->sensor_height + 100;
   data[0] = vmax & 0xFF;
   data[1] = (vmax >> 8) & 0xFF;
   data[2] = (vmax >> 16) & 0xFF;
   data[3] = (vmax >> 24) & 0xFF;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3030, data, 4) == 0) break;
-    HAL_Delay(5);
-  }  /* VMAX */
+  App_IMX335_WriteReg(0x3030, data, 4);
   
-  /* Clear HOLD to apply all changes simultaneously */
+  /* Clear HOLD to apply */
   hold = 0;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3001, &hold, 1) == 0) break;
-    HAL_Delay(5);
-  }
-  HAL_Delay(20);  /* Wait for settings to stabilize after HOLD clear */
+  App_IMX335_WriteReg(0x3001, &hold, 1);
+  HAL_Delay(30);
   
   /* Return to streaming mode */
   mode = 0x00;
-  for (retry_count = 0; retry_count < max_retries; retry_count++) {
-    if (App_IMX335_WriteReg(0x3000, &mode, 1) == 0) break;
-    HAL_Delay(5);
-  }
-  
-  /* Give sensor time to stabilize before next operation */
+  App_IMX335_WriteReg(0x3000, &mode, 1);
   HAL_Delay(50);
   
   /* Update active status */
@@ -714,7 +678,9 @@ int App_ChangeROI(int index)
   current_roi_index = index;
   cfg->active = 1;
   
-  printf("[ROI] ROI #%d activated (VMAX=%lu)\r\n", index, vmax);
+  printf("[ROI] ROI #%d configured successfully! (VMAX=%lu)\r\n", index, vmax);
+  printf("[ROI] Now restart streaming to see the new ROI\r\n");
+  
   return 0;
 }
 
@@ -789,7 +755,7 @@ void App_StopROISwitcher(void)
   * @brief  Power on the camera sensor
   * @retval 0 on success, -1 on failure
   */
-static int App_Camera_PowerOn(void)
+int App_Camera_PowerOn(void)
 {
   GPIO_InitTypeDef gpio_init_structure = {0};
   
@@ -838,7 +804,7 @@ static int App_Camera_PowerOn(void)
   * @brief  Initialize I2C2 for sensor access
   * @retval 0 on success, -1 on failure
   */
-static int App_I2C_Init(void)
+int App_I2C_Init(void)
 {
   int32_t ret;
   
@@ -890,7 +856,7 @@ static int App_IMX335_Detect(void)
   * @param  len   Number of bytes to read
   * @retval 0 on success, -1 on failure
   */
-static int App_IMX335_ReadReg(uint16_t reg, uint8_t *data, uint16_t len)
+int App_IMX335_ReadReg(uint16_t reg, uint8_t *data, uint16_t len)
 {
   int32_t ret;
   
@@ -917,7 +883,7 @@ static int App_IMX335_ReadReg(uint16_t reg, uint8_t *data, uint16_t len)
   * @param  len   Number of bytes to write
   * @retval 0 on success, -1 on failure
   */
-static int App_IMX335_WriteReg(uint16_t reg, uint8_t *data, uint16_t len)
+int App_IMX335_WriteReg(uint16_t reg, uint8_t *data, uint16_t len)
 {
   int32_t ret;
   
@@ -1392,24 +1358,14 @@ static void capture_init(UVCL_StreamConf_t *current, int is_jpeg)
   if (is_jpeg)
     JPEG_Init(current);
 
-  /* 
-   * CRITICAL: Apply ROI BEFORE CAM_Init() so the sensor outputs the correct size
-   * from the beginning. The ISP pipeline will be configured for this size.
-   */
-  ROI_Config_t *active_roi = App_GetCurrentROI();
-  if (active_roi != NULL) {
-    printf("[ROI] Applying ROI BEFORE CAM_Init: x=%u, y=%u, size=%dx%d\r\n",
-           active_roi->x_start, active_roi->y_start,
-           active_roi->sensor_width, active_roi->sensor_height);
-    
-    /* Apply ROI to sensor - this must happen BEFORE CAM_Init */
-    if (App_ApplyROIToSensor(active_roi) == 0) {
-      printf("[ROI] Sensor configured for ROI output: %dx%d\r\n",
-             active_roi->sensor_width, active_roi->sensor_height);
-    }
-  }
+  printf("[ROI] Camera pipeline initializing for: %dx%d@%dfps\r\n",
+         current->width, current->height, current->fps);
 
-  /* start camera pipeline - ISP will be configured for the ROI size */
+  /* 
+   * Initialize camera - the CMW middleware handles sensor configuration.
+   * The ROI is configured through the crop mechanism in CAM_Init().
+   * DO NOT apply ROI registers directly - let the middleware handle it.
+   */
   cam_conf.capture_width = current->width;
   cam_conf.capture_height = current->height;
   cam_conf.fps = current->fps;
@@ -1425,6 +1381,7 @@ static void capture_init(UVCL_StreamConf_t *current, int is_jpeg)
   ret = lp_push(&capt_capturing_buffers, buffer);
   assert(ret == 0);
 
+  /* Start streaming */
   CAM_CapturePipe_Start(buffer->buffer, CMW_MODE_CONTINUOUS);
 }
 
