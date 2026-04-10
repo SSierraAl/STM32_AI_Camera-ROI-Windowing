@@ -70,4 +70,7 @@ void CAM_TriggerCameraRestart(void);
 /* External flag to track ROI changes */
 extern uint8_t roi_changed_flag;
 
+/* External flag to track streaming status */
+extern uint8_t streaming_active_flag;
+
 #endif

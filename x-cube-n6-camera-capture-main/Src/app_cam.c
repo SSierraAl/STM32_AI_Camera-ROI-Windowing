@@ -48,15 +48,16 @@
 #define NUM_ROIS 8
 
 /* ROI Definitions - 8 positions covering the sensor */
+/* Full sensor is 2592x1944, we crop to 640x480 for high-res views */
 static const ROI_Def_t ROIS[NUM_ROIS] = {
-  {976,  732,  640, 480},  /* ROI 0: Center */
-  {0,    0,    640, 480},  /* ROI 1: Top-Left */
-  {1952, 0,    640, 480},  /* ROI 2: Top-Right */
-  {0,    1464, 640, 480},  /* ROI 3: Bottom-Left */
-  {1952, 1464, 640, 480},  /* ROI 4: Bottom-Right */
-  {0,    732,  640, 480},  /* ROI 5: Center-Left */
-  {1952, 732,  640, 480},  /* ROI 6: Center-Right */
-  {976,  0,    640, 480},  /* ROI 7: Center-Top */
+  {0,    0,    2592, 1944}, /* ROI 0: FULL SENSOR (full resolution, downscaled by DCMIPP) */
+  {976,  732,  640, 480},  /* ROI 1: Center (high-res crop) */
+  {0,    0,    640, 480},  /* ROI 2: Top-Left (high-res crop) */
+  {1952, 0,    640, 480},  /* ROI 3: Top-Right (high-res crop) */
+  {0,    1464, 640, 480},  /* ROI 4: Bottom-Left (high-res crop) */
+  {1952, 1464, 640, 480},  /* ROI 5: Bottom-Right (high-res crop) */
+  {0,    732,  640, 480},  /* ROI 6: Center-Left (high-res crop) */
+  {1952, 732,  640, 480},  /* ROI 7: Center-Right (high-res crop) */
 };
 
 /* Current active ROI index */
@@ -67,6 +68,9 @@ static uint8_t roi_switcher_enabled = 0;
 
 /* Flag to signal camera restart needed after ROI switch */
 uint8_t roi_changed_flag = 0;
+
+/* Flag to indicate streaming is active (set by app.c) */
+uint8_t streaming_active_flag = 0;
 
 /* Function pointer to restart camera pipeline (set by app.c) */
 static void (*camera_restart_callback)(void) = NULL;
@@ -273,15 +277,29 @@ static void CAM_InitCropConfig(CMW_Manual_roi_area_t *roi, int sensor_width, int
   /* Get the current ROI definition */
   const ROI_Def_t *current_roi = &ROIS[current_roi_index];
   
-  printf("[CAM] Configuring ROI crop (ROI #%d): x=%u, y=%u, w=%u, h=%u\r\n",
+  printf("[CAM] Configuring ROI crop (ROI #%d): x=%u, y=%u, sensor=%dx%d\r\n",
          current_roi_index, current_roi->x, current_roi->y, 
          current_roi->width, current_roi->height);
   
-  /* Set the crop area to the desired ROI region */
-  roi->width = current_roi->width;
-  roi->height = current_roi->height;
-  roi->offset_x = current_roi->x;
-  roi->offset_y = current_roi->y;
+  /* 
+   * Special handling for full sensor view (2592x1944)
+   * For full sensor, we use the entire sensor and let DCMIPP downscale
+   * For cropped ROIs, we use the crop window
+   */
+  if (current_roi->width >= 2000 && current_roi->height >= 1500) {
+    /* Full sensor view - no crop, use entire sensor */
+    printf("[CAM] FULL SENSOR mode - no crop, entire sensor used\r\n");
+    roi->width = sensor_width;   /* Use actual sensor width */
+    roi->height = sensor_height; /* Use actual sensor height */
+    roi->offset_x = 0;
+    roi->offset_y = 0;
+  } else {
+    /* Cropped ROI - use the specified window */
+    roi->width = current_roi->width;
+    roi->height = current_roi->height;
+    roi->offset_x = current_roi->x;
+    roi->offset_y = current_roi->y;
+  }
   
   printf("[CAM] ROI crop configured: offset=(%u,%u), size=%dx%d\r\n", 
          roi->offset_x, roi->offset_y, roi->width, roi->height);

@@ -1243,6 +1243,9 @@ static void app_uvc_streaming_active(struct uvcl_callbacks *cbs, UVCL_StreamConf
 {
   sr_set_streaming_active(&streaming_req, &stream);
 
+  /* Signal that streaming is active - ROI switcher will pause */
+  streaming_active_flag = 1;
+  
   BSP_LED_On(LED_RED);
 }
 
@@ -1250,6 +1253,9 @@ static void app_uvc_streaming_inactive(struct uvcl_callbacks *cbs)
 {
   sr_set_streaming_inactive(&streaming_req);
 
+  /* Signal that streaming is inactive - ROI switcher can resume */
+  streaming_active_flag = 0;
+  
   BSP_LED_Off(LED_RED);
 }
 
@@ -1415,17 +1421,16 @@ static void uvc_thread_fct(void *arg)
   struct buffer *buffer;
   int is_jpeg;
   int roi_restart_pending = 0;
+  int stream_counter = 0;
 
   while (1) {
     /* wait for stream request */
     while (!sr_is_streaming(&streaming_req, &current)) {
-      /* Check if ROI changed while waiting - if so, restart with new ROI */
-      if (roi_changed_flag) {
-        roi_changed_flag = 0;
-        printf("[UVC] ROI changed detected, will restart with new ROI\r\n");
-      }
       HAL_Delay(1);
     }
+
+    /* Streaming is active */
+    printf("[UVC] Streaming active\r\n");
 
     /* copy request */
     is_jpeg = current.stream.payload_type == UVCL_PAYLOAD_JPEG || current.stream.payload_type == UVCL_PAYLOAD_FB_JPEG;
@@ -1433,15 +1438,40 @@ static void uvc_thread_fct(void *arg)
            current.stream.height, current.stream.fps);
 
     capture_init(&current.stream, is_jpeg);
-    /* looping until no more streaming */
-    while (1) {
-      /* Check if ROI changed during streaming */
+    
+    /* Loop until streaming stops or ROI change requested */
+    while (sr_is_valid(&streaming_req, &current)) {
+      /* Check if ROI changed - if so, restart with new ROI */
       if (roi_changed_flag) {
         roi_changed_flag = 0;
-        printf("[UVC] ROI changed during streaming, stopping to apply new ROI...\r\n");
-        roi_restart_pending = 1;
-        break;
+        printf("[UVC] ROI changed detected! Stopping and restarting with new ROI...\r\n");
+        
+        /* Stop current streaming */
+        capture_deinit(is_jpeg);
+        printf("[UVC] Camera stopped, new ROI will be applied\r\n");
+        
+        /* Small delay to let USB disconnect */
+        HAL_Delay(100);
+        
+        /* Reinitialize with new ROI */
+        printf("[UVC] Restarting camera with new ROI...\r\n");
+        capture_init(&current.stream, is_jpeg);
+        printf("[UVC] Camera restarted with new ROI\r\n");
       }
+      
+      do {
+        buffer = lp_pop(&capt_ready_buffers, 0);
+        if (!buffer)
+          HAL_Delay(1);
+      } while (!buffer && sr_is_valid(&streaming_req, &current));
+
+      if (!buffer)
+        break;
+
+      if (is_jpeg)
+        send_jpg_frame(buffer);
+      else
+        send_raw_frame(buffer);
     }
 
     printf("End streaming\r\n");

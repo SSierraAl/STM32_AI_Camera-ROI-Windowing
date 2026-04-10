@@ -371,24 +371,21 @@ static void main_thread_fct(void *arg)
    
    printf("\r\n=== Configuring ROI BEFORE Camera Init (640x480) ===\r\n");
    
-   /* Configure the FIRST ROI that will be used at startup */
-   /* This ROI will be active when streaming starts */
-   App_AddROIConfig(976, 732, 640, 480);  /* ROI #0: Center position */
+   /* Configure ROIs - first one is FULL SENSOR, rest are high-res crops */
+   App_AddROIConfig(0, 0, 2592, 1944);     /* ROI #0: FULL SENSOR (full view) */
+   App_AddROIConfig(976, 732, 640, 480);   /* ROI #1: Center (high-res crop) */
+   App_AddROIConfig(0, 0, 640, 480);       /* ROI #2: Top-Left (high-res crop) */
+   App_AddROIConfig(1952, 0, 640, 480);    /* ROI #3: Top-Right (high-res crop) */
+   App_AddROIConfig(0, 1464, 640, 480);    /* ROI #4: Bottom-Left (high-res crop) */
+   App_AddROIConfig(1952, 1464, 640, 480); /* ROI #5: Bottom-Right (high-res crop) */
+   App_AddROIConfig(0, 732, 640, 480);     /* ROI #6: Center-Left (high-res crop) */
+   App_AddROIConfig(1952, 732, 640, 480);  /* ROI #7: Center-Right (high-res crop) */
    
-   /* Activate the first ROI - this will be applied during CAM_Init */
+   /* Activate the FULL SENSOR ROI at startup */
    App_ActivateROI(0);
    
-   printf("[ROI] Active ROI at startup: x=976, y=732, size=640x480\r\n");
-   printf("[ROI] NOTE: Camera will output 640x480 from this region\r\n");
-   
-   /* Add other ROI positions for reference (not used at startup) */
-   App_AddROIConfig(0, 0, 640, 480);       /* ROI #1: Top-Left */
-   App_AddROIConfig(1952, 0, 640, 480);    /* ROI #2: Top-Right */
-   App_AddROIConfig(0, 1464, 640, 480);    /* ROI #3: Bottom-Left */
-   App_AddROIConfig(1952, 1464, 640, 480); /* ROI #4: Bottom-Right */
-   App_AddROIConfig(0, 732, 640, 480);     /* ROI #5: Center-Left */
-   App_AddROIConfig(1952, 732, 640, 480);  /* ROI #6: Center-Right */
-   App_AddROIConfig(976, 0, 640, 480);     /* ROI #7: Center-Top */
+   printf("[ROI] Active ROI at startup: FULL SENSOR (2592x1944)\r\n");
+   printf("[ROI] Camera will output full sensor view, downscaled to 640x480\r\n");
    
    App_ListROIs();
    
@@ -481,7 +478,7 @@ static void main_thread_fct(void *arg)
     * The STM32 will switch ROIs in the background.
     * When you reconnect the Python client, you'll see the new ROI.
     */
-   CAM_StartROISwitcher(1500);
+   CAM_StartROISwitcher(5000);
    /* ============================================
       ROI REGISTER TEST (Optional - for debugging)
       ============================================ */

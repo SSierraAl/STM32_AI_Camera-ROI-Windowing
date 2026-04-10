@@ -306,23 +306,41 @@ def main():
     error_count = 0
     
     try:
+        reconnect_pending = False
+        
         while True:
+            # Check if we need to reconnect (camera was restarted by STM32)
+            if reconnect_pending:
+                print("\n*** Reconnecting to camera after ROI switch... ***")
+                cap.release()
+                time.sleep(0.5)  # Wait for USB to stabilize
+                cap, success = open_camera_with_retry(
+                    CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT, FPS, CAP_BACKEND
+                )
+                if not success:
+                    print("Could not reconnect - waiting and retrying...")
+                    time.sleep(2)
+                    continue
+                # Check if we need YUY2 conversion again
+                actual_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+                if actual_fourcc > 0:
+                    codec = chr(actual_fourcc & 0xff) + chr((actual_fourcc >> 8) & 0xff) + chr((actual_fourcc >> 16) & 0xff) + chr((actual_fourcc >> 24) & 0xff)
+                    if codec == "YUY2":
+                        needs_yuy2_conversion = True
+                        print("*** YUY2 conversion enabled ***")
+                reconnect_pending = False
+                error_count = 0
+            
             ret, frame = cap.read()
             
             if not ret:
                 error_count += 1
                 print(f"\nERROR {error_count}: Failed to grab frame!")
                 
-                if error_count >= 5:
-                    print("Too many errors, attempting recovery...")
-                    cap.release()
-                    time.sleep(1)
-                    cap, success = open_camera_with_retry(
-                        CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT, FPS, CAP_BACKEND
-                    )
-                    if not success:
-                        print("Could not recover camera connection")
-                        break
+                # If we get many errors, camera may have been restarted by STM32
+                if error_count >= 3:
+                    print("Multiple errors detected - camera may have restarted (ROI switch)")
+                    reconnect_pending = True
                     error_count = 0
                 continue
             
